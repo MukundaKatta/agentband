@@ -16,6 +16,19 @@ from agentband import (
 )
 
 
+class RecordingBackend:
+    """Test backend that tags the draft so we can prove it was applied."""
+
+    name = "recording"
+
+    def __init__(self):
+        self.calls = []
+
+    def rewrite(self, text: str, *, tone: str) -> str:
+        self.calls.append((text, tone))
+        return f"[{tone}] {text}"
+
+
 @pytest.mark.parametrize(
     "ticket,expected",
     [
@@ -134,3 +147,71 @@ def test_band_result_is_json_serializable():
 def test_default_band_shape():
     band = default_band()
     assert [a.name for a in band] == ["triage", "retriever", "drafter", "reviewer"]
+
+
+def test_triage_tie_break_prefers_earlier_priority():
+    # "refund" (billing) and "error" (bug) both match once; billing precedes
+    # bug in the priority order, so billing must win the tie.
+    ctx, bus = Context(), Bus()
+    TriageAgent().handle("the refund flow throws an error", ctx, bus)
+    assert ctx.get("category") == "billing"
+
+
+def test_triage_highest_score_beats_priority_order():
+    # bug matches twice ("crash", "bug"); billing matches once ("refund").
+    # The higher score must win even though billing has higher priority.
+    ctx, bus = Context(), Bus()
+    TriageAgent().handle("the app keeps crashing, a refund-page bug", ctx, bus)
+    assert ctx.get("category") == "bug"
+
+
+def test_retriever_falls_back_to_general_for_unknown_category():
+    ctx, bus = Context(), Bus()
+    ctx.set("category", "nonexistent")
+    snippet = RetrieverAgent().handle("", ctx, bus)
+    assert snippet == ctx.get("kb_snippet")
+    assert "support specialist" in snippet.lower()
+
+
+def test_drafter_applies_backend_with_tone():
+    ctx, bus = Context(), Bus()
+    ctx.set("kb_snippet", "Help text.")
+    ctx.set("urgency", "normal")
+    backend = RecordingBackend()
+    draft = DrafterAgent(backend=backend, tone="formal").handle("", ctx, bus)
+    assert draft.startswith("[formal] ")
+    assert backend.calls and backend.calls[0][1] == "formal"
+    assert ctx.get("draft") == draft
+
+
+def test_message_and_context_serialization_round_trip():
+    msg = Message("triage", "retriever", "result", "category=billing")
+    assert msg.to_dict() == {
+        "sender": "triage",
+        "recipient": "retriever",
+        "kind": "result",
+        "content": "category=billing",
+    }
+    ctx = Context()
+    ctx.set("a", 1)
+    assert ctx.to_dict() == {"a": 1}
+    # to_dict returns a copy, not the live mapping
+    ctx.to_dict()["a"] = 999
+    assert ctx.get("a") == 1
+
+
+def test_band_result_final_reply_defaults_empty_without_draft():
+    # A band that never drafts leaves final_reply empty and unapproved.
+    result = Conductor(band=[TriageAgent(), RetrieverAgent()]).run("a refund please")
+    assert result.final_reply == ""
+    assert result.approved is False
+
+
+def test_conductor_runs_custom_band_with_backend():
+    backend = RecordingBackend()
+    band = [TriageAgent(), RetrieverAgent(), DrafterAgent(backend=backend), ReviewerAgent()]
+    result = Conductor(band=band).run("I need a refund on my invoice")
+    assert result.context["category"] == "billing"
+    assert result.final_reply.startswith("[warm and concise] ")
+    # The reviewer still approves the backend-rewritten draft.
+    assert result.approved is True
