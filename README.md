@@ -4,9 +4,9 @@ A small **multi-agent coordinator**. Specialized agents share one context and
 pass messages over a bus to finish an **enterprise workflow together** — no
 single model doing everything, and no API key required to run it.
 
+[![CI](https://github.com/MukundaKatta/agentband/actions/workflows/ci.yml/badge.svg)](https://github.com/MukundaKatta/agentband/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-pytest-blueviolet.svg)](tests/)
 
 ---
 
@@ -101,6 +101,38 @@ result = Conductor(band=band).run("I can't sign in, my password reset keeps fail
 Triage, retrieval, and review stay deterministic; only the drafted prose
 changes.
 
+## API reference
+
+The whole public surface is re-exported from the top-level `agentband` package.
+
+**`Conductor(band=default_band())`** — runs an ordered band over one task.
+- `run(task: str) -> BandResult` — execute the band and return the result. A fresh
+  `Context` and `Bus` are created per call, so runs are isolated and deterministic.
+
+**`BandResult`** — the inspectable outcome of a run.
+- `task: str` — the input ticket.
+- `steps: list[Step]` — per-agent log; each `Step` has `agent`, `role`, `output`.
+- `context: dict` — the final shared blackboard (`category`, `urgency`, `kb_snippet`,
+  `draft`, `approved`, `review_notes`, …).
+- `messages: list[dict]` — the full ordered hand-off trace between agents.
+- `final_reply: str` — convenience accessor for `context["draft"]`.
+- `approved: bool` — convenience accessor for `context["approved"]`.
+- `to_dict() -> dict` — JSON-ready snapshot for logging or replay.
+
+**Agents** — `TriageAgent`, `RetrieverAgent`, `DrafterAgent`, `ReviewerAgent`. Each
+implements the `Agent` protocol: `handle(task, ctx, bus) -> str`. `DrafterAgent`
+optionally takes a `backend` and a `tone`.
+
+**Coordination primitives** — `Context` (a blackboard: `get`/`set`/`to_dict`),
+`Bus` (records messages: `post`/`for_recipient`/`to_list`), and `Message`
+(`sender`, `recipient`, `kind`, `content`).
+
+**Backends** — `StubBackend` (keyless passthrough), `GeminiBackend`,
+`AnthropicBackend`, `OllamaBackend`. Each implements `rewrite(text, *, tone) -> str`
+and imports its SDK lazily.
+
+**`default_band() -> list[Agent]`** — the support-desk band, in order.
+
 ## Dashboard
 
 ```bash
@@ -113,12 +145,15 @@ reply.
 
 ## Tests
 
+The suite uses only the standard library, so it needs no third-party deps:
+
 ```bash
-pip install -e ".[dev]"
-pytest
+pip install -e .
+python -m unittest discover -s tests
 ```
 
-Runs fully offline against the stub band.
+`pytest` works too if you prefer it (`pip install -e ".[dev]"` then `pytest`).
+Either way the tests run fully offline against the deterministic stub band.
 
 ## License
 

@@ -11,7 +11,23 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Mukunda Katta" }]
 keywords = ["ai-agents", "multi-agent", "orchestration", "agent-coordination", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/MukundaKatta/agentband"
+Repository = "https://github.com/MukundaKatta/agentband"
+Issues = "https://github.com/MukundaKatta/agentband/issues"
 
 [project.optional-dependencies]
 gemini = ["google-genai>=0.3"]
@@ -22,6 +38,8 @@ dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentband"]
+# Ship the PEP 561 marker so downstream type-checkers honour the inline types.
+artifacts = ["src/agentband/py.typed"]
 
 [tool.ruff]
 line-length = 100
